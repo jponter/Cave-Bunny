@@ -1,5 +1,5 @@
 # Cave-Bunny
-Cave Bunny - MIT License - James Ponter
+Cave Bunny - MIT License - (c) 2019 James Ponter - if you use this code in any way a mention would be lovely :) obviously the OLC stuff you must keep to the license and I really do suggest you check out Javid's you tube tutorials plus the OLC website.
 
 
 uses OLCPixel Game Engine (c) One Lone Coder 
