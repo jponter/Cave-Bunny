@@ -43,7 +43,7 @@ int nLevelHeight;
 float fCameraPosX = 0.0f;
 float fCameraPosY = 0.0f;
 
-float fPlayerPosX = 5.0f;
+float fPlayerPosX = 4.0f;
 float fPlayerPosY = 4.0f;
 
 float fPlayerVelX = 0.0f;
@@ -184,8 +184,24 @@ public:
 		//create the minimap - call a function to do this
 		
 		UpdateMiniMap();
+		// TODO:
+		// go through the level and check the neighbour at y-1; if it's a block then change the ID of x,y to 2
+		for (int x = 0; x < nLevelWidth; x++)
+		{
+			for (int y = 1; y < nLevelHeight; y++) // we dont need the top layer
+			{
 
-		
+				if (leveldata[((y-1) * nLevelWidth) + x] == 1)
+				{
+					leveldata[(y * nLevelWidth) + x] = 4;
+
+				}
+				
+			}
+		}
+
+
+
 		//done with my setup - return
 		return true;
 	}
@@ -209,7 +225,7 @@ public:
 			for (int y = 0; y < nLevelHeight; y++)
 			{
 
-				if (leveldata[y * nLevelWidth + x] == 1)
+				if (leveldata[y * nLevelWidth + x] == 1 || leveldata[y * nLevelWidth + x] == 4 )
 				{
 					Draw(x, y, olc::BLACK);
 
