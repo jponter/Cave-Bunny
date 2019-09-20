@@ -227,7 +227,8 @@ public:
 			for (int y = 0; y < nLevelHeight; y++)
 			{
 
-				if (leveldata[y * nLevelWidth + x] == 1 || leveldata[y * nLevelWidth + x] == 4 )
+				//if (leveldata[y * nLevelWidth + x] == 1 || leveldata[y * nLevelWidth + x] == 4 )
+				if (leveldata[y * nLevelWidth + x] != 0)
 				{
 					Draw(x, y, olc::BLACK);
 
@@ -717,7 +718,7 @@ public:
 			SetPixelBlend(0.4f);
 			SetDrawTarget(minimap2);
 			DrawSprite(0, 0, minimap);
-			Draw(fPlayerPosX, fPlayerPosY, olc::RED);
+			Draw(fPlayerPosX, fPlayerPosY, olc::MAGENTA);
 			SetDrawTarget(nullptr);
 
 
