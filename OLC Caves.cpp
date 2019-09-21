@@ -436,14 +436,14 @@ public:
 		if (GetKey(olc::Key::UP).bPressed )
 		{
 			nTitleSelection--;
-			if (nTitleSelection < 0) nTitleSelection = 4;
+			if (nTitleSelection < 0) nTitleSelection = 2;
 			//olc::SOUND::PlaySample(sndThump);
 		}
 
 		if (GetKey(olc::Key::DOWN).bPressed )
 		{
 			nTitleSelection++;
-			if (nTitleSelection > 4) nTitleSelection = 0;
+			if (nTitleSelection > 2) nTitleSelection = 0;
 			//olc::SOUND::PlaySample(sndThump);
 		}
 
