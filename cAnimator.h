@@ -78,7 +78,7 @@ public:
 			pge->SetDrawTarget(tmpSprite);
 			pge->Clear(olc::BLANK);
 
-			pge->DrawPartialSprite(0, 0, tmpMainSprite, i * w, 0, w, w);
+			pge->DrawPartialSprite(0, 0, tmpMainSprite, i * w, 0, w, h);
 			this->mapStates[state].push_back(tmpSprite);
 
 		}
