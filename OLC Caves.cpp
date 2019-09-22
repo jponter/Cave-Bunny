@@ -16,7 +16,7 @@
 
 using namespace std;
 
-//#define _debug
+#define _debug
 
 
 
@@ -100,8 +100,27 @@ private:
 		GS_TITLE,
 		GS_MAIN,
 		GS_RESET,
+		GS_VIEW
 	} nGameState = GS_LOADING;
 
+	 
+
+	struct sNode
+	{
+		bool bObstacle = false;
+		bool bVisited = false;
+		float fGlobalGoal;
+		float fLocalGoal;
+		int x;
+		int y;
+		vector <sNode*> vecNeighbours;
+		sNode* parent;
+	};
+
+	sNode* nodes = nullptr;
+	
+	sNode* nodeStart = nullptr;
+	sNode* nodeEnd = nullptr;
 
 
 public:
@@ -192,7 +211,7 @@ public:
 			Clear(olc::BLACK);
 			//DrawString(5, 35, "Generating with Seed of " + std::to_string(seed), olc::WHITE);
 			
-			DrawString(5, ScreenHeight() / 2, "- Generating, Please Wait - Seed = " + std::to_string(seed), olc::WHITE, 1);
+			DrawString(5, ScreenHeight() / 2, "- Generating, will take a bit.. \n - Seed = " + std::to_string(seed), olc::WHITE, 1); 
 			
 			bFirstFrameGenerating = false;
 			return true;
@@ -251,6 +270,51 @@ public:
 		//copy over the resulting cavedata world generated in the simulation to the leveldata
 		leveldata = cavedata;
 
+		//initialise the a* nodes map
+		nodes = new sNode[nLevelWidth * nLevelHeight];
+		for (int x = 0; x < nLevelWidth; x++)
+		
+			for (int y = 0; y < nLevelHeight; y++)
+			{
+				nodes[(y * nLevelWidth) + x].x = x;
+				nodes[(y * nLevelWidth) + x].y = y;
+				if (leveldata[y * nLevelWidth + x] != 0)
+				{
+					nodes[y * nLevelWidth + x].bObstacle = true;
+				#ifdef _debug
+					{
+					cout << "Obstacle : ";
+					cout << x;
+					cout << " , ";
+					cout << y;
+					cout << endl;
+					}
+				#endif
+				}
+				nodes[y * nLevelWidth + x].parent = nullptr;
+				nodes[y * nLevelWidth + x].bVisited = false;
+			}
+		
+
+		//calculate the neighbours of the a* map
+		for (int x = 0; x < nLevelWidth; x++)
+		
+			for (int y = 0; y < nLevelHeight; y++)
+			{
+				if (y > 0)	nodes[y * nLevelWidth + x].vecNeighbours.push_back(&nodes[(y - 1) * nLevelWidth + (x + 0)]);
+				
+				if (y < nLevelHeight - 1) nodes[y * nLevelWidth + x].vecNeighbours.push_back(&nodes[(y + 1) * nLevelWidth + (x + 0)]);
+				
+				if (x > 0) nodes[y * nLevelWidth + x].vecNeighbours.push_back(&nodes[(y + 0) * nLevelWidth + (x -1)]);
+				
+				if (x < nLevelWidth-1)nodes[y * nLevelWidth + x].vecNeighbours.push_back(&nodes[(y + 0) * nLevelWidth + (x + 1)]);
+				
+				int numNeigbours = nodes[y * nLevelWidth + x].vecNeighbours.size();
+				//cout << "added to  " + to_string(x) + " , " + to_string(y) + " " + to_string(numNeigbours) + " "  << endl;
+				
+			}
+
+		
 
 
 		// sprinkle some treasure
@@ -262,25 +326,117 @@ public:
 		UpdateMiniMap();
 		// TODO:
 		// go through the level and check the neighbour at y-1; if it's a block then change the ID of x,y to 2
-		for (int x = 0; x < nLevelWidth; x++)
-		{
-			for (int y = 1; y < nLevelHeight; y++) // we dont need the top layer
-			{
+		//for (int x = 0; x < nLevelWidth; x++)
+		//{
+		//	for (int y = 1; y < nLevelHeight; y++) // we dont need the top layer
+		//	{
 
-				if (leveldata[((y - 1) * nLevelWidth) + x] == 1)
-				{
-					leveldata[(y * nLevelWidth) + x] = 4;
+		//		if (leveldata[((y - 1) * nLevelWidth) + x] == 1)
+		//		{
+		//			leveldata[(y * nLevelWidth) + x] = 4;
 
-				}
+		//		}
 
-			}
-		}
+		//	}
+		//}
 
+
+
+		
+		
+		
+		
 
 
 		//done with my setup - return
 
 		nGameState = GS_TITLE;
+		return true;
+	}
+
+	bool Solve_AStar() 
+	{
+		//this is the A* Algorithm
+		for (int x = 0; x < nLevelWidth; x++)
+		
+			for (int y = 0; y < nLevelHeight; y++)
+			{
+				nodes[y * nLevelWidth + x].bVisited = false;
+				nodes[y * nLevelWidth + x].fGlobalGoal = INFINITY;
+				nodes[y * nLevelWidth + x].fLocalGoal = INFINITY;
+				nodes[y * nLevelWidth + x].parent = nullptr;
+				
+			}
+		auto distance = [](sNode* a, sNode* b) // For convenience
+		{
+			return sqrtf((a->x - b->x) * (a->x - b->x) + (a->y - b->y) * (a->y - b->y));
+		};
+
+		auto heuristic = [distance](sNode* a, sNode* b) // So we can experiment with heuristic
+		{
+			return distance(a, b);
+		};
+		// Setup starting conditions
+		sNode* nodeCurrent = nodeStart;
+		nodeStart->fLocalGoal = 0.0f;
+		nodeStart->fGlobalGoal = heuristic(nodeStart, nodeEnd);
+
+		// Add start node to not tested list - this will ensure it gets tested.
+		// As the algorithm progresses, newly discovered nodes get added to this
+		// list, and will themselves be tested later
+		list<sNode*> listNotTestedNodes;
+		listNotTestedNodes.push_back(nodeStart);
+
+		// if the not tested list contains nodes, there may be better paths
+		// which have not yet been explored. However, we will also stop 
+		// searching when we reach the target - there may well be better
+		// paths but this one will do - it wont be the longest.
+		while (!listNotTestedNodes.empty() && nodeCurrent != nodeEnd)// Find absolutely shortest path // && nodeCurrent != nodeEnd)
+		{
+			// Sort Untested nodes by global goal, so lowest is first
+			listNotTestedNodes.sort([](const sNode* lhs, const sNode* rhs) { return lhs->fGlobalGoal < rhs->fGlobalGoal; });
+
+			// Front of listNotTestedNodes is potentially the lowest distance node. Our
+			// list may also contain nodes that have been visited, so ditch these...
+			while (!listNotTestedNodes.empty() && listNotTestedNodes.front()->bVisited)
+				listNotTestedNodes.pop_front();
+
+			// ...or abort because there are no valid nodes left to test
+			if (listNotTestedNodes.empty())
+				break;
+
+			nodeCurrent = listNotTestedNodes.front();
+			nodeCurrent->bVisited = true; // We only explore a node once
+
+
+			// Check each of this node's neighbours...
+			for (auto nodeNeighbour : nodeCurrent->vecNeighbours)
+			{
+				// ... and only if the neighbour is not visited and is 
+				// not an obstacle, add it to NotTested List
+				if (!nodeNeighbour->bVisited && nodeNeighbour->bObstacle == 0)
+					listNotTestedNodes.push_back(nodeNeighbour);
+
+				// Calculate the neighbours potential lowest parent distance
+				float fPossiblyLowerGoal = nodeCurrent->fLocalGoal + distance(nodeCurrent, nodeNeighbour);
+
+				// If choosing to path through this node is a lower distance than what 
+				// the neighbour currently has set, update the neighbour to use this node
+				// as the path source, and set its distance scores as necessary
+				if (fPossiblyLowerGoal < nodeNeighbour->fLocalGoal)
+				{
+					nodeNeighbour->parent = nodeCurrent;
+					nodeNeighbour->fLocalGoal = fPossiblyLowerGoal;
+
+					// The best path length to the neighbour being tested has changed, so
+					// update the neighbour's score. The heuristic is used to globally bias
+					// the path algorithm, so it knows if its getting better or worse. At some
+					// point the algo will realise this path is worse and abandon it, and then go
+					// and search along the next best path.
+					nodeNeighbour->fGlobalGoal = nodeNeighbour->fLocalGoal + heuristic(nodeNeighbour, nodeEnd);
+				}
+			}
+		}
 		return true;
 	}
 
@@ -323,6 +479,10 @@ public:
 	{
 		// just randomly place some gems whereever there are more than x neighbours (x = treasureHiddenLimit)
 		totalgems = 0;
+		nodeStart = &nodes[(int)fPlayerPosY * nLevelWidth + (int)fPlayerPosX];
+		
+
+
 		int treasureHiddenLimit = 3;
 		for (int x = 0; x < nLevelWidth; x++)
 		{
@@ -331,22 +491,34 @@ public:
 
 				if (leveldata[y * nLevelWidth + x] == 0) //empty space
 				{
+					nodeEnd = &nodes[y * nLevelWidth + x];
+					
 					int nbs = CountNeighbours(x, y);
 					if (nbs > treasureHiddenLimit)
 					{
-						leveldata[y * nLevelWidth + x] = 100;
-						totalgems++;
-						/*cout << "Treasure added ";
-						cout << x;
-						cout << " ";
-						cout << y;
-							cout << " \n";*/
+#ifdef _debug
+						cout << "solving A* for" << x << " , " << y << endl;
+						//DrawString(5, ScreenHeight() / 2, "Hacky " + std::to_string(seed), olc::WHITE, 1);
+#endif						
+						Solve_AStar();
+						if (nodeEnd->parent != nullptr) // node end has a parent - assume a* found a path back to the player
+						{
+							leveldata[y * nLevelWidth + x] = 100;
+							totalgems++;
+							/*cout << "Treasure added ";
+							cout << x;
+							cout << " ";
+							cout << y;
+								cout << " \n";*/
+						}
 					}
 
 				}
 			}
 		}
-
+		// cleanup
+		nodeEnd = nullptr;
+		nodeStart = nullptr;
 	}
 
 
@@ -432,18 +604,19 @@ public:
 		DrawString(5, 5, "Seed: " + to_string(seed), nTitleSelection == 0 ? olc::WHITE : olc::YELLOW, 1);
 		DrawString(5, 15, "Generate from New Seed", nTitleSelection == 1 ? olc::WHITE : olc::YELLOW, 1);
 		DrawString(5, 25, "Play Level", nTitleSelection == 2 ? olc::WHITE : olc::YELLOW, 1);
+		DrawString(5, 35, "View Level", nTitleSelection == 3 ? olc::WHITE : olc::YELLOW, 1);
 
 		if (GetKey(olc::Key::UP).bPressed )
 		{
 			nTitleSelection--;
-			if (nTitleSelection < 0) nTitleSelection = 2;
+			if (nTitleSelection < 0) nTitleSelection = 3;
 			//olc::SOUND::PlaySample(sndThump);
 		}
 
 		if (GetKey(olc::Key::DOWN).bPressed )
 		{
 			nTitleSelection++;
-			if (nTitleSelection > 2) nTitleSelection = 0;
+			if (nTitleSelection > 3) nTitleSelection = 0;
 			//olc::SOUND::PlaySample(sndThump);
 		}
 
@@ -479,6 +652,7 @@ public:
 				nGameState = GS_GENERATE;
 			}
 			if (nTitleSelection == 2) nGameState = GS_MAIN;
+			if (nTitleSelection == 3) nGameState = GS_VIEW;
 		}
 
 		// draw a big copy of the player idling - just for fun
@@ -912,6 +1086,547 @@ public:
 
 		return true;
 	}
+	
+	
+	int startNodeX = 0;
+	int startNodeY = 0;
+	int endNodeX = 0;
+	int endNodeY = 0;
+	bool startNode = false;
+	bool endNode = false;
+
+
+
+
+	bool GameState_View(float fElapsedTime)
+	{
+		
+		bool endnode = false;
+		int nTileWidth = 32;
+		int nTileHeight = 32;
+		int nVisibleTilesX = ScreenWidth() / nTileWidth;
+		int nVisibleTilesY = ScreenHeight() / nTileHeight;
+
+		fCameraPosX = fPlayerPosX;
+		fCameraPosY = fPlayerPosY;
+			
+		float fOffsetX = fCameraPosX - (float)nVisibleTilesX / 2.0f;
+		float fOffsetY = fCameraPosY - (float)nVisibleTilesY / 2.0f;
+
+		//clamp camera to game boundaries
+		if (fOffsetX < 0) fOffsetX = 0;
+		if (fOffsetY < 0) fOffsetY = 0;
+
+		if (fOffsetX > nLevelWidth) fOffsetX = nLevelWidth - 1;
+		if (fOffsetY > nLevelHeight) fOffsetY = nLevelHeight - 1;
+		
+
+		auto GetTile = [&](int x, int y)
+		{
+			if (x >= 0 && x < nLevelWidth && y >= 0 && y < nLevelHeight)
+				//return sLevel[y * nLevelWidth + x];
+				//return (loader->getMap("testmap")->getTileLayer("Tile Layer 1")->getTileVector()[y][x]);
+				return (unsigned int)(leveldata[y * nLevelWidth + x]);
+			else
+				return (unsigned int)999;
+		};
+
+		auto SetTile = [&](int x, int y, unsigned int c)
+		{
+			if (x >= 0 && x < nLevelWidth && y >= 0 && y < nLevelHeight)
+			{
+				//sLevel[y * nLevelWidth + x] = c;
+				//loader->
+				leveldata[y * nLevelWidth + x] = c;
+			}
+		};
+
+		
+
+		if (IsFocused())
+		{
+
+			if (GetKey(olc::Key::UP).bHeld)
+			{
+				fPlayerPosY += -1.0f;
+			}
+
+			if (GetKey(olc::Key::DOWN).bHeld)
+			{
+				fPlayerPosY += 1.0f;
+			}
+
+			if (GetKey(olc::Key::LEFT).bHeld)
+			{
+				//fPlayerVelX += (bPlayerOnGround ? -14.0f : -8.0f) * fElapsedTime;
+				fPlayerPosX += -1;
+				fFaceDir = -1.0f;
+			}
+
+			if (GetKey(olc::Key::RIGHT).bHeld)
+			{
+				//fPlayerVelX += (bPlayerOnGround ? 14.0f : 8.0f) * fElapsedTime;
+				fPlayerPosX += 1;
+				fFaceDir = +1.0f;
+			}
+
+			if (GetMouse(0).bReleased)
+			{
+				// Handle Input
+				int mouseX = (GetMouseX() / nTileWidth);
+				int mouseY = (GetMouseY() / nTileHeight);
+				// we have a LB mouse click
+				if (mouseX >= 0 && mouseX < nLevelWidth)
+				{
+					if (mouseY >= 0 && mouseY < nLevelHeight)
+					{
+						startNode = true;
+						startNodeX = mouseX;
+						startNodeY = mouseY;
+						nodeStart = &nodes[(mouseY + (int)fOffsetY) * nLevelWidth + (mouseX+(int)fOffsetX)];
+#ifdef _debug
+						cout << mouseX;
+						cout << " , ";
+						cout << mouseY;
+						cout << " : ";
+						cout << mouseX + (int)fOffsetX;
+						cout << " , ";
+						cout << mouseY + (int)fOffsetY;
+						cout << endl;
+#endif
+						if (startNode && endNode) Solve_AStar();
+
+
+					}
+				}
+				
+
+
+			}
+			if (GetMouse(1).bReleased)
+			{
+				// Handle Input
+				int mouseX = (GetMouseX()  / nTileWidth );
+				int mouseY = (GetMouseY()  / nTileHeight);
+				// we have a RB mouse click
+				if (mouseX >= 0 && mouseX < nLevelWidth)
+				{
+					if (mouseY >= 0 && mouseY < nLevelHeight)
+					{
+						endNode = true;
+						endNodeX = mouseX;
+						endNodeY = mouseY;
+						nodeEnd = &nodes[(mouseY + (int)fOffsetY) * nLevelWidth + (mouseX+ int(fOffsetX))];
+
+						if (startNode && endNode) Solve_AStar();
+					}
+				}
+
+
+
+			}
+			//if (GetKey(olc::Key::SPACE).bPressed)
+			//{
+			//	//SimulationUpdate();
+			//	if (fPlayerVelY == 0)
+			//	{
+			//		fPlayerVelY = -10.0f;
+			//		olc::SOUND::PlaySample(sndJump);
+
+			//	}
+			//}
+
+			if (GetKey(olc::Key::Q).bPressed)
+			{
+				//quit out to title we may need to do some tidying - not sure yet
+				nGameState = GS_RESET;
+			}
+
+
+		}
+
+		//add gravity 
+		//if (!noclip)
+		//{
+		//	fPlayerVelY += 20.0f * fElapsedTime;
+		//}
+
+		//// add drag for player on the ground
+		//if (bPlayerOnGround)
+		//{
+		//	fPlayerVelX += -5.0f * fPlayerVelX * fElapsedTime;
+		//	if (abs(fPlayerVelX) < 0.01f)
+		//	{
+		//		fPlayerVelX = 0.0f;
+		//		animPlayer.ChangeState("idle");
+		//	}
+		//	else
+		//		animPlayer.ChangeState("walk");
+		//}
+		//else
+		//{
+		//	if (fPlayerVelY < 0)
+		//		animPlayer.ChangeState("jump");
+		//}
+
+
+
+
+		//float fNewPlayerPosX = fPlayerPosX + fPlayerVelX * fElapsedTime;
+		//float fNewPlayerPosY = fPlayerPosY + fPlayerVelY * fElapsedTime;
+
+		//clamp velocity
+
+
+
+		if (fPlayerVelX > 10.0f)
+			fPlayerVelX = 10.0f;
+
+		if (fPlayerVelX < -10.0f)
+			fPlayerVelX = -10.0f;
+
+		if (fPlayerVelY > 100.0f)
+			fPlayerVelY = 100.0f;
+
+		if (fPlayerVelY < -100.0f)
+			fPlayerVelY = -100.0f;
+
+
+		// check for collisions 
+
+		if (!noclip) {
+
+			//check for collectables - definitely a better way of doing this exists - needs to be optimised as checking some areas twice
+
+		//	if (fPlayerVelX <= 0)
+		//	{
+		//		//top left
+		//		if (GetTile(fNewPlayerPosX + 0.0f, fPlayerPosY + 0.0f) == 100) //|| GetTile(fNewPlayerPosX + 0.0f, fPlayerPosY + 0.9f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fNewPlayerPosX, fPlayerPosY, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+		//		else if (GetTile(fNewPlayerPosX + 0.0f, fPlayerPosY + 0.9f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fNewPlayerPosX, fPlayerPosY + 0.9, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+
+		//	}
+		//	else
+		//	{
+		//		//top right
+		//		if (GetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.0f) == 100) // || GetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.9f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fNewPlayerPosX + 1.0f, fPlayerPosY, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+		//		else if (GetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.9f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.9f, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+
+		//	}
+
+
+
+		//	if (fPlayerVelY <= 0)
+		//	{
+		//		// bottom left
+		//		if (GetTile(fPlayerPosX + 0.0f, fNewPlayerPosY + 0.0f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fPlayerPosX, fNewPlayerPosY, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+		//		else if (GetTile(fPlayerPosX + 0.9f, fNewPlayerPosY + 0.0f) == 100)
+		//		{
+
+		//			gems++;
+		//			SetTile(fPlayerPosX + 0.9f, fNewPlayerPosY, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+
+		//	}
+		//	else
+		//	{
+		//		if (GetTile(fPlayerPosX + 0.0f, fNewPlayerPosY + 1.0f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fPlayerPosX, fNewPlayerPosY + 1.0f, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+		//		else if (GetTile(fPlayerPosX + 0.9f, fNewPlayerPosY + 1.0f) == 100)
+		//		{
+		//			gems++;
+		//			SetTile(fPlayerPosX + 0.9f, fNewPlayerPosY + 1.0f, 0);
+		//			olc::SOUND::PlaySample(sndPickup);
+		//		}
+		//	}
+
+
+
+
+
+
+		//	// check for world collisions
+
+		//	if (fPlayerVelX <= 0)
+		//	{
+
+		//		if (GetTile(fNewPlayerPosX + 0.0f, fPlayerPosY + 0.0f) != 0 || GetTile(fNewPlayerPosX + 0.0f, fPlayerPosY + 0.9f) != 0)
+		//		{
+		//			fNewPlayerPosX = (int)fNewPlayerPosX + 1;
+		//			fPlayerVelX = 0;
+		//		}
+		//	}
+		//	else
+		//	{
+		//		if (GetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.0f) != 0 || GetTile(fNewPlayerPosX + 1.0f, fPlayerPosY + 0.9f) != 0)
+		//		{
+		//			fNewPlayerPosX = (int)fNewPlayerPosX;
+		//			fPlayerVelX = 0;
+		//		}
+		//	}
+
+
+		//	bPlayerOnGround = false;
+		//	if (fPlayerVelY <= 0)
+		//	{
+		//		if (GetTile(fPlayerPosX + 0.0f, fNewPlayerPosY + 0.0f) != 0 || GetTile(fPlayerPosX + 0.9f, fNewPlayerPosY + 0.0f) != 0)
+		//		{
+		//			fNewPlayerPosY = (int)fNewPlayerPosY + 1;
+		//			fPlayerVelY = 0;
+		//		}
+		//	}
+		//	else
+		//	{
+		//		if (GetTile(fPlayerPosX + 0.0f, fNewPlayerPosY + 1.0f) != 0 || GetTile(fPlayerPosX + 0.9f, fNewPlayerPosY + 1.0f) != 0)
+		//		{
+		//			fNewPlayerPosY = (int)fNewPlayerPosY;
+		//			fPlayerVelY = 0;
+		//			bPlayerOnGround = true;
+		//		}
+		//	}
+		//}
+
+
+
+
+			//fPlayerPosX = fNewPlayerPosX;
+			//fPlayerPosY = fNewPlayerPosY;
+
+
+			// check for out of bounds player in the <0 area and clamp if needed
+			if (fPlayerPosX <= 0) {
+				fPlayerPosX = 0;
+				fPlayerVelX = 0;
+			}
+			if (fPlayerPosY <= 0) {
+				fPlayerPosY = 0;
+				fPlayerVelY = 0;
+			}
+
+			if (fPlayerPosX >= nLevelWidth - nVisibleTilesX/2 )
+			{
+				fPlayerPosX = nLevelWidth - nVisibleTilesX/2;
+			}
+			if (fPlayerPosY >= nLevelHeight - nVisibleTilesY/2)
+			{
+				fPlayerPosY = nLevelHeight - nVisibleTilesY/2;
+			}
+
+
+
+			
+
+
+		
+
+			// get some offsets for smooth movement
+			float fTileOffsetX = (fOffsetX - (int)fOffsetX) * nTileWidth;
+			float fTileOffsetY = (fOffsetY - (int)fOffsetY) * nTileHeight;
+
+			Clear(olc::BLACK);
+
+			fBackdropScaleX = (float)(sprBackground->width - ScreenWidth()) / (float)((nLevelWidth)+(float)nVisibleTilesX);
+			fBackdropScaleY = (float)(sprBackground->height - ScreenHeight()) / (float)((nLevelHeight)+(float)nVisibleTilesY);
+			DrawPartialSprite(0, 0, sprBackground, fOffsetX * fBackdropScaleX, fOffsetY * fBackdropScaleY, ScreenWidth(), ScreenHeight());
+
+			//draw the tile map
+			for (int x = -1; x < nVisibleTilesX + 1; x++)
+			{
+				for (int y = -1; y < nVisibleTilesY + 1; y++)
+				{
+					//float tempx = (int)((((float)x - fOffsetX) * (float(nTileWidth))));
+					int tempy = y * nTileHeight - fTileOffsetY;
+					unsigned int sTileID = GetTile(x + fOffsetX, y + fOffsetY);
+					switch (sTileID)
+					{
+					case 0:
+						//FillRect(x * nTileWidth -(fTileOffsetX), y * nTileHeight -fTileOffsetY, nTileWidth ,  nTileHeight , olc::CYAN);
+						//DrawRect(tempx,tempy,(x+1) * nTileWidth - fTileOffsetX, (y+1) * nTileHeight - fOffsetY, olc::WHITE);
+						break;
+					case 1:
+						//FillRect(x * nTileWidth - (fTileOffsetX), y * nTileHeight - fTileOffsetY, nTileWidth, nTileHeight, olc::WHITE);
+						//DrawRect(x* nTileWidth - fTileOffsetX, y* nTileHeight - fTileOffsetY, nTileWidth, nTileHeight, olc::RED);
+						DrawSprite(x * nTileWidth - ceil(fTileOffsetX), y * nTileHeight - fTileOffsetY, sprFloor);
+						//DrawSprite(tempx + 0.5f - (tempx < 0.0f), y* nTileHeight - fTileOffsetY, sprFloor);
+						
+						//DrawRect(tempx , tempy, nTileWidth, nTileHeight, olc::RED);
+						break;
+					case 3:
+						DrawSprite(x * nTileWidth - ceil(fTileOffsetX), y * nTileHeight - fTileOffsetY, sprFloor);
+						break;
+
+					case 4:
+						DrawSprite(x * nTileWidth - ceil(fTileOffsetX), y * nTileHeight - fTileOffsetY, sprFloor2);
+						break;
+
+					case 5:
+						DrawSprite(x * nTileWidth - ceil(fTileOffsetX), y * nTileHeight - fTileOffsetY, sprFloor3);
+						break;
+
+					case 100:
+						//gem
+						SetPixelMode(olc::Pixel::MASK);
+						DrawSprite(x * nTileWidth - ceil(fTileOffsetX), y * nTileHeight - fTileOffsetY, sprGem);
+						SetPixelMode(olc::Pixel::NORMAL);
+						break;
+
+
+
+
+					default:
+
+						break;
+					}
+				}
+			}
+
+		
+
+			// lets draw some paths if we have one
+			if (nodeEnd != nullptr && nodeStart != nullptr)
+			{
+				sNode* p = nodeEnd;
+				while (p->parent != nullptr)
+				{
+					DrawRect((p->x - fOffsetX) * nTileWidth,( p->y - fOffsetY)*nTileHeight, nTileWidth, nTileHeight, olc::YELLOW);
+
+					p = p->parent;
+					
+				}
+			}
+			//draw the start node if it's valid and in range
+			if (nodeStart != nullptr && startNode)
+			{
+				int tmpx = nodeStart->x  ;
+				int tmpy = nodeStart->y  ;
+
+				//check if x is on the screen
+				// 
+				if (tmpx  >= 0 && tmpx < fOffsetX + nVisibleTilesX)
+				{
+					if (tmpy >= 0 && tmpy < fOffsetY + nVisibleTilesY)
+					{
+						DrawRect((tmpx -fOffsetX) * nTileWidth, (tmpy -fOffsetY) * nTileHeight , nTileHeight, nTileHeight, olc::GREEN);
+					}
+				}
+			}
+			//draw the end node if it's valid and in range
+			if (nodeEnd != nullptr && endNode)
+			{
+				int tmpx = nodeEnd->x;
+				int tmpy = nodeEnd->y;
+				if (tmpx >= 0 && tmpx < fOffsetX + nVisibleTilesX)
+				{
+					if (tmpy >=0 && tmpy < fOffsetY + nVisibleTilesY)
+					{
+						DrawRect((tmpx - fOffsetX) * nTileWidth, (tmpy - fOffsetY) * nTileHeight, nTileHeight, nTileHeight, olc::RED);
+					}
+				}
+			}
+
+
+			//// Draw the player
+			SetPixelMode(olc::Pixel::MASK);
+			animPlayer.Update(fElapsedTime);
+			olc::GFX2D::Transform2D t;
+			t.Translate(-16, -16); // translate sprite so middle of sprite is at 0,0 world space
+			t.Scale(fFaceDir * 1.0f, 1.0f); // scale in the x direction essentially flipping the sprite if fFaceDir is negative 
+
+			t.Translate((fPlayerPosX - fOffsetX) * nTileWidth + 16, (fPlayerPosY - fOffsetY) * nTileHeight + 16); //translate to correct world position again
+
+			////experimental bounding box																								 
+			////DrawRect(((fPlayerPosX - fOffsetX ) *nTileWidth)+6, (fPlayerPosY - fOffsetY) *nTileHeight, 32-12, nTileHeight, olc::RED);
+
+			animPlayer.DrawSelf(this, t);
+
+
+			//HUD
+			SetPixelMode(olc::Pixel::NORMAL);
+			SetPixelBlend(1.0f);
+			std::string HUD1 = "Gems = " + std::to_string(gems) + " / " + std::to_string(totalgems);
+			DrawString(6, 7, HUD1, olc::BLACK);
+			DrawString(5, 6, HUD1, olc::YELLOW);
+
+
+			// draw the minimap
+			UpdateMiniMap();
+			SetPixelMode(olc::Pixel::ALPHA);
+			SetPixelBlend(0.4f);
+			SetDrawTarget(minimap2);
+			DrawSprite(0, 0, minimap);
+			Draw(fPlayerPosX, fPlayerPosY, olc::MAGENTA);
+			SetDrawTarget(nullptr);
+
+
+			DrawSprite(ScreenWidth() - nLevelWidth - 5, 5, minimap2);
+			SetPixelMode(olc::Pixel::NORMAL);
+
+
+
+#ifdef _debug
+			SetPixelMode(olc::Pixel::NORMAL);
+			SetPixelBlend(1.0f);
+			std::string sDebug1 = "fPlayerPosX " + std::to_string(fPlayerPosX) + " fPlayerPosY " + std::to_string(fPlayerPosY);
+			std::string sDebug2 = "fOffsetX " + std::to_string(fOffsetX) + " fOffsetY " + std::to_string(fOffsetY);
+			std::string sDebug3 = "fTileOffsetX " + std::to_string(floor(fTileOffsetX)) + " fTileOffsetY " + std::to_string(fTileOffsetY);
+			std::string sDebug4 = "";
+			if (nodeStart != nullptr)
+			{
+				sDebug4 = "startNode coords " + std::to_string(nodeStart->x) + " , " + std::to_string(nodeStart->y);
+			}
+			
+			
+			
+
+			DrawString(0, 20, sDebug1, olc::BLACK);
+			DrawString(0, 30, sDebug2, olc::BLACK);
+			DrawString(0, 40, sDebug3, olc::BLACK);
+			DrawString(0, 50, sDebug4, olc::BLACK);
+
+#endif
+
+
+			//cout << "X: ";
+			//cout << fPlayerPosX;
+			//cout << "XOff: ";
+			//cout << fOffsetX;
+			//cout << "Calc: ";
+			//out << fPlayerPosX + 1 - fOffsetX * nTileWidth;
+			//cout << "\n";
+
+
+			return true;
+		}
+	}
 
 
 	bool OnUserUpdate(float fElapsedTime) override
@@ -923,6 +1638,7 @@ public:
 		case GS_TITLE: GameState_Title(fElapsedTime); break;
 		case GS_MAIN: GameState_Main(fElapsedTime); break;
 		case GS_RESET: GameState_Reset(fElapsedTime); break;
+		case GS_VIEW: GameState_View(fElapsedTime); break;
 		}
 
 		return true;
