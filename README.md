@@ -1,4 +1,5 @@
-# Cave-Bunny
+# Cave-Bunny - COMPILE X64 with VS2019
+
 Cave Bunny - MIT License - (c) 2019 James Ponter - if you use this code in any way a mention would be lovely :) obviously the OLC stuff you must keep to the license and I really do suggest you check out Javid's you tube tutorials plus the OLC website.
 
 THIS IS UNOPTIMISED/HACKY CODE! Might be useful for learning though! :)
